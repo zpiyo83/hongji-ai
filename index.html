@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI聊天助手</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background-color: #f0f8ff; }
+        #chat-box {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #ffffff;
+            border-radius: 10px;
+        }
+        .user-message {
+            text-align: right;
+            margin: 5px;
+            padding: 8px;
+            background: #007bff;
+            color: white;
+            border-radius: 10px;
+            display: inline-block;
+            max-width: 70%;
+        }
+        .ai-message {
+            text-align: left;
+            margin: 5px;
+            padding: 8px;
+            background: #e9ecef;
+            border-radius: 10px;
+            display: inline-block;
+            max-width: 70%;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .alert {
+            border-radius: 10px;
+        }
+        .card {
+            border-radius: 10px;
+        }
+    </style>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 主要内容区域 -->
+        <div id="main-area">
+            <div class="alert alert-success">
+                当前积分：<span id="points">{{ user_points }}</span>
+            </div>
+
+            <!-- 聊天区域 -->
+            <div id="chat-box"></div>
+            <div class="input-group mb-3">
+                <input type="text" id="message-input" class="form-control" placeholder="请输入消息...">
+                <div class="input-group-append">
+                    <button id="send-btn" class="btn btn-primary">发送</button>
+                </div>
+            </div>
+
+            <!-- 功能区域 -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5>微信充值</h5>
+                            <img src="{{ url_for('static', filename='wx.jpg') }}" alt="微信二维码" class="img-fluid">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5>兑换码</h5>
+                            <input type="text" id="redeem-code" class="form-control mb-2" placeholder="请输入兑换码">
+                            <button id="redeem-btn" class="btn btn-success">兑换</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let userPoints = {{ user_points }};
+        const VALID_CODES = new Set(['CODE123', 'CODE456']);
+
+        // 初始化
+        $(document).ready(() => {
+            console.log('页面加载完成');
+            try {
+                bindEvents();
+                updatePointsDisplay();
+            } catch (error) {
+                console.error('初始化错误:', error);
+            }
+        });
+
+        // 事件绑定
+        function bindEvents() {
+            $('#send-btn').click(handleSendMessage);
+            $('#redeem-btn').click(handleRedeem);
+            $('#message-input').on('keypress', e => {
+                if (e.which === 13) handleSendMessage();
+            });
+        }
+
+        async function handleSendMessage() {
+            const message = $('#message-input').val().trim();
+            if (!message) return;
+
+            try {
+                $('#send-btn').prop('disabled', true);
+                
+                // 发送消息到后端
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'same-origin',  // 添加此行以发送 cookies
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                appendMessage(message, 'user');
+                $('#message-input').val('');
+
+                if (data.response) {
+                    appendMessage(data.response, 'ai');
+                    
+                    // 更新积分
+                    const inputCost = calculatePoints(message);
+                    const outputCost = calculatePoints(data.response);
+                    userPoints -= (inputCost + outputCost);
+                    updatePointsDisplay();
+                }
+
+            } catch (error) {
+                console.error('发送消息错误:', error);
+                alert('发送失败：' + error.message);
+            } finally {
+                $('#send-btn').prop('disabled', false);
+            }
+        }
+
+        function handleRedeem() {
+            const code = $('#redeem-code').val().trim();
+            if (!code) return;
+
+            if (VALID_CODES.has(code)) {
+                VALID_CODES.delete(code);
+                userPoints += 10000;
+                updatePointsDisplay();
+                alert('兑换成功！获得10000积分');
+            } else {
+                alert('无效的兑换码');
+            }
+            $('#redeem-code').val('');
+        }
+
+        function calculatePoints(text) {
+            return Array.from(text).reduce((sum, char) => 
+                sum + (/[\u4e00-\u9fa5]/.test(char) ? 1 : 0.8), 0);
+        }
+
+        function appendMessage(message, type) {
+            const messageDiv = $('<div>')
+                .addClass(`message ${type}-message`)
+                .text(message);
+            $('#chat-box').append(messageDiv)
+                .scrollTop($('#chat-box')[0].scrollHeight);
+        }
+
+        function updatePointsDisplay() {
+            $('#points').text(Math.floor(userPoints));
+        }
+    </script>
+</body>
+</html>
